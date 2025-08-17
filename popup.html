@@ -3,49 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Community RAP Tracker</title>
-    <link rel="stylesheet" href="popup.css">
+    <title>Roblox Wealth Tracker</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎮 Roblox Community RAP Tracker</h1>
-        </div>
-        
-        <div class="input-section">
-            <label for="communityLink">Community Link:</label>
-            <input 
-                type="text" 
-                id="communityLink" 
-                placeholder="https://www.roblox.com/communities/35461612/Z9-Market#!/about"
-                class="community-input"
-            >
-            <div class="button-group">
-                <button id="searchBtn" class="btn btn-primary">Search for List</button>
-                <button id="refreshBtn" class="btn btn-secondary" disabled>Refresh</button>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="title">
+                <span class="icon">💎</span>
+                <h1>Roblox Wealth Tracker</h1>
             </div>
-        </div>
+            <div class="version">v2.0</div>
+        </header>
 
-        <div class="status-section">
-            <div id="statusMessage" class="status-message"></div>
-            <div id="progressBar" class="progress-bar" style="display: none;">
-                <div class="progress-fill"></div>
-            </div>
-        </div>
-
-        <div class="results-section">
-            <div class="leaderboard-header" style="display: none;">
-                <h2>💰 Wealth Leaderboard</h2>
-                <div class="stats">
-                    <span id="memberCount">0 members</span>
-                    <span id="totalRAP">Total RAP: 0</span>
-                </div>
+        <!-- Input Section -->
+        <section class="input-section">
+            <div class="input-group">
+                <label for="communityUrl">Community Link</label>
+                <input 
+                    type="url" 
+                    id="communityUrl" 
+                    placeholder="https://www.roblox.com/communities/35461612/..."
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <div class="input-status" id="inputStatus"></div>
             </div>
             
+            <div class="controls">
+                <button id="scanBtn" class="btn primary" disabled>
+                    <span class="btn-text">Scan Community</span>
+                    <span class="btn-icon">🔍</span>
+                </button>
+                <button id="refreshBtn" class="btn secondary" disabled>
+                    <span class="btn-text">Refresh</span>
+                    <span class="btn-icon">🔄</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Status Section -->
+        <section class="status-section">
+            <div id="statusDisplay" class="status-display"></div>
+            <div id="progressContainer" class="progress-container hidden">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div id="progressText" class="progress-text">0%</div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section">
+            <div id="statsBar" class="stats-bar hidden">
+                <div class="stat">
+                    <span class="stat-label">Members</span>
+                    <span id="memberCount" class="stat-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">With RAP</span>
+                    <span id="rapCount" class="stat-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Value</span>
+                    <span id="totalValue" class="stat-value">R$ 0</span>
+                </div>
+            </div>
+
             <div id="leaderboard" class="leaderboard"></div>
-        </div>
+        </section>
     </div>
 
-    <script src="popup-script.js"></script>
+    <script src="main.js"></script>
 </body>
 </html>

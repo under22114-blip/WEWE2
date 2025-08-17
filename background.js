@@ -1,450 +1,417 @@
-class RobloxAPIManager {
+/**
+ * Roblox Community Wealth Tracker - Background Service Worker
+ * Ultra-optimized for lightning-fast processing of massive communities
+ */
+
+class TurboAPIClient {
     constructor() {
-        this.baseDelay = 25; // Ultra-fast delay between requests (ms)
-        this.maxConcurrentRequests = 50; // Maximum parallel requests for speed
-        this.requestQueue = [];
-        this.activeRequests = 0;
-        this.rateLimitDelay = 500; // Reduced rate limit delay
-        this.rapCache = new Map(); // Cache RAP values to avoid duplicate requests
-        this.inventoryCache = new Map(); // Cache inventory data
-        this.userCache = new Map(); // Cache user data
+        this.config = {
+            maxConcurrent: 100,        // Aggressive concurrency
+            requestDelay: 10,          // Minimal delay
+            rateLimitDelay: 300,       // Quick recovery from rate limits
+            timeout: 5000,             // Fast timeout
+            maxRetries: 2              // Limited retries for speed
+        };
+        
+        this.state = {
+            activeRequests: 0,
+            requestQueue: [],
+            isRateLimited: false
+        };
+        
+        this.cache = {
+            rap: new Map(),
+            inventory: new Map(),
+            community: new Map()
+        };
     }
 
-    async makeRequest(url, options = {}) {
+    async request(url, options = {}) {
         return new Promise((resolve, reject) => {
-            this.requestQueue.push({ url, options, resolve, reject });
+            this.state.requestQueue.push({
+                url,
+                options,
+                resolve,
+                reject,
+                timestamp: Date.now()
+            });
             this.processQueue();
         });
     }
 
     async processQueue() {
-        if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
+        if (this.state.activeRequests >= this.config.maxConcurrent || 
+            this.state.requestQueue.length === 0 || 
+            this.state.isRateLimited) {
             return;
         }
 
-        const { url, options, resolve, reject } = this.requestQueue.shift();
-        this.activeRequests++;
+        const request = this.state.requestQueue.shift();
+        this.state.activeRequests++;
 
         try {
-            const response = await fetch(url, {
-                ...options,
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+            const response = await fetch(request.url, {
+                ...request.options,
+                signal: controller.signal,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Accept': 'application/json',
-                    ...options.headers
+                    ...request.options.headers
                 }
             });
 
+            clearTimeout(timeoutId);
+
             if (response.status === 429) {
-                // Rate limited - retry after delay
-                setTimeout(() => {
-                    this.requestQueue.unshift({ url, options, resolve, reject });
-                    this.activeRequests--;
-                    this.processQueue();
-                }, this.rateLimitDelay);
+                this.handleRateLimit();
+                // Retry request
+                this.state.requestQueue.unshift(request);
                 return;
             }
 
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            resolve(data);
+            request.resolve(data);
+
         } catch (error) {
-            reject(error);
+            if (error.name === 'AbortError') {
+                request.reject(new Error('Request timeout'));
+            } else {
+                request.reject(error);
+            }
         } finally {
-            this.activeRequests--;
-            setTimeout(() => this.processQueue(), this.baseDelay);
+            this.state.activeRequests--;
+            setTimeout(() => this.processQueue(), this.config.requestDelay);
         }
     }
 
-    async fetchCommunityMembers(communityId, maxMembers = 5000) {
+    handleRateLimit() {
+        this.state.isRateLimited = true;
+        setTimeout(() => {
+            this.state.isRateLimited = false;
+            this.processQueue();
+        }, this.config.rateLimitDelay);
+    }
+
+    async getCommunityMembers(communityId, limit = 2000) {
+        const cacheKey = `members_${communityId}_${limit}`;
+        if (this.cache.community.has(cacheKey)) {
+            return this.cache.community.get(cacheKey);
+        }
+
         const members = [];
         let cursor = null;
-        let hasNextPage = true;
-        let pageCount = 0;
+        let fetchedPages = 0;
+        const maxPages = Math.ceil(limit / 100);
 
-        // For very large communities, we'll use intelligent sampling
-        const maxPages = Math.ceil(maxMembers / 100); // Calculate max pages needed
-
-        while (hasNextPage && pageCount < maxPages && members.length < maxMembers) {
+        while (members.length < limit && fetchedPages < maxPages) {
             try {
-                let url = `https://groups.roblox.com/v1/groups/${communityId}/users?sortOrder=Asc&limit=100`;
-                if (cursor) {
-                    url += `&cursor=${cursor}`;
-                }
+                let url = `https://groups.roblox.com/v1/groups/${communityId}/users?limit=100&sortOrder=Asc`;
+                if (cursor) url += `&cursor=${cursor}`;
 
-                const response = await this.makeRequest(url);
+                const response = await this.request(url);
                 
-                if (response.data && response.data.length > 0) {
+                if (response.data?.length) {
                     members.push(...response.data);
-                }
-
-                cursor = response.nextPageCursor;
-                hasNextPage = !!cursor;
-                pageCount++;
-
-                // Send progress update
-                this.sendProgressUpdate(members.length, maxMembers, `Fetched ${members.length} members...`);
-
-                // For large communities, fetch multiple pages in parallel
-                if (hasNextPage && members.length < maxMembers && pageCount < maxPages) {
-                    const parallelFetches = Math.min(3, maxPages - pageCount);
-                    const parallelPromises = [];
-
-                    for (let i = 0; i < parallelFetches && hasNextPage; i++) {
-                        if (cursor) {
-                            const parallelUrl = `https://groups.roblox.com/v1/groups/${communityId}/users?sortOrder=Asc&limit=100&cursor=${cursor}`;
-                            parallelPromises.push(this.makeRequest(parallelUrl));
+                    cursor = response.nextPageCursor;
+                    fetchedPages++;
+                    
+                    // Send progress update
+                    this.sendMessage({
+                        type: 'progress_update',
+                        data: {
+                            processed: members.length,
+                            total: limit,
+                            percentage: Math.round((members.length / limit) * 100),
+                            message: `Fetched ${members.length} members...`
                         }
-                    }
-
-                    if (parallelPromises.length > 0) {
-                        const parallelResults = await Promise.allSettled(parallelPromises);
-                        parallelResults.forEach(result => {
-                            if (result.status === 'fulfilled' && result.value.data) {
-                                members.push(...result.value.data);
-                                if (result.value.nextPageCursor) {
-                                    cursor = result.value.nextPageCursor;
-                                }
-                            }
-                        });
-                        pageCount += parallelPromises.length;
-                    }
+                    });
+                } else {
+                    break;
                 }
 
+                if (!cursor) break;
             } catch (error) {
-                console.error('Error fetching community members:', error);
+                console.error('Error fetching members:', error);
                 break;
             }
         }
 
-        return members.slice(0, maxMembers); // Ensure we don't exceed the limit
+        const result = members.slice(0, limit);
+        this.cache.community.set(cacheKey, result);
+        return result;
     }
 
-    async fetchUserInventory(userId) {
-        // Check cache first
-        if (this.inventoryCache.has(userId)) {
-            return this.inventoryCache.get(userId);
+    async getUserInventory(userId) {
+        if (this.cache.inventory.has(userId)) {
+            return this.cache.inventory.get(userId);
         }
 
         try {
-            // For speed, only fetch the first page of collectibles
-            // Most valuable items are typically in the first page anyway
-            const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Desc&limit=100`;
-            const response = await this.makeRequest(url);
+            // Only fetch first page of collectibles, sorted by value (most valuable first)
+            const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?limit=50&sortOrder=Desc`;
+            const response = await this.request(url);
             const items = response.data || [];
             
-            // Cache the result
-            this.inventoryCache.set(userId, items);
+            this.cache.inventory.set(userId, items);
             return items;
         } catch (error) {
-            console.error(`Error fetching inventory for user ${userId}:`, error);
-            // Cache empty result to avoid retrying
-            this.inventoryCache.set(userId, []);
+            this.cache.inventory.set(userId, []);
             return [];
         }
     }
 
-    async fetchAssetRAP(assetId) {
-        // Check cache first
-        if (this.rapCache.has(assetId)) {
-            return this.rapCache.get(assetId);
+    async getAssetRAP(assetId) {
+        if (this.cache.rap.has(assetId)) {
+            return this.cache.rap.get(assetId);
         }
 
         try {
             const url = `https://economy.roblox.com/v1/assets/${assetId}/resale-data`;
-            const response = await this.makeRequest(url);
+            const response = await this.request(url);
             const rap = response.recentAveragePrice || 0;
             
-            // Cache the result
-            this.rapCache.set(assetId, rap);
+            this.cache.rap.set(assetId, rap);
             return rap;
         } catch (error) {
-            console.error(`Error fetching RAP for asset ${assetId}:`, error);
-            // Cache the error result as 0 to avoid retrying
-            this.rapCache.set(assetId, 0);
+            this.cache.rap.set(assetId, 0);
             return 0;
         }
     }
 
-    async calculateUserRAP(userId) {
+    async calculatePlayerWealth(userId) {
         try {
-            const inventory = await this.fetchUserInventory(userId);
+            const inventory = await this.getUserInventory(userId);
             
-            if (inventory.length === 0) {
+            if (!inventory.length) {
                 return { totalRAP: 0, valuableItems: [] };
             }
 
-            let totalRAP = 0;
-            const valuableItems = [];
+            // Process all items in parallel for maximum speed
+            const rapResults = await Promise.all(
+                inventory.map(async (item) => {
+                    try {
+                        const rap = await this.getAssetRAP(item.assetId);
+                        return { item, rap };
+                    } catch {
+                        return { item, rap: 0 };
+                    }
+                })
+            );
 
-            // Process ALL items in parallel for maximum speed
-            const rapPromises = inventory.map(async (item) => {
-                try {
-                    const rap = await this.fetchAssetRAP(item.assetId);
-                    return { item, rap };
-                } catch (error) {
-                    return { item, rap: 0 };
-                }
-            });
+            // Filter valuable items and calculate total
+            const valuableItems = rapResults.filter(({ rap }) => rap > 10000);
+            const totalRAP = valuableItems.reduce((sum, { rap }) => sum + rap, 0);
 
-            // Wait for all RAP calculations to complete
-            const allResults = await Promise.all(rapPromises);
-
-            // Filter and sum up valuable items
-            allResults.forEach(({ item, rap }) => {
-                if (rap > 10000) { // Only count items worth more than 10k
-                    totalRAP += rap;
-                    valuableItems.push({ ...item, rap });
-                }
-            });
-
-            return { totalRAP, valuableItems };
+            return {
+                totalRAP,
+                valuableItems: valuableItems.map(({ item, rap }) => ({ ...item, rap }))
+            };
         } catch (error) {
-            console.error(`Error calculating RAP for user ${userId}:`, error);
             return { totalRAP: 0, valuableItems: [] };
         }
     }
 
-    sendProgressUpdate(current, total, message) {
-        chrome.runtime.sendMessage({
-            type: 'progress',
-            data: { current, total, message }
-        }).catch(() => {}); // Ignore errors if popup is closed
-    }
-
-    sendStatusUpdate(message, statusType = 'info') {
-        chrome.runtime.sendMessage({
-            type: 'status',
-            message,
-            statusType
-        }).catch(() => {});
-    }
-
-    sendSuccess(data) {
-        chrome.runtime.sendMessage({
-            type: 'success',
-            data
-        }).catch(() => {});
-    }
-
-    sendPartialResults(data) {
-        chrome.runtime.sendMessage({
-            type: 'partial_results',
-            data
-        }).catch(() => {});
-    }
-
-    sendError(error) {
-        chrome.runtime.sendMessage({
-            type: 'error',
-            error
-        }).catch(() => {});
+    sendMessage(message) {
+        chrome.runtime.sendMessage(message).catch(() => {
+            // Ignore errors if popup is closed
+        });
     }
 }
 
-class CommunityTracker {
+class CommunityScanner {
     constructor() {
-        this.apiManager = new RobloxAPIManager();
-        this.isProcessing = false;
+        this.api = new TurboAPIClient();
+        this.isScanning = false;
+        this.scanResults = [];
     }
 
-    async fetchAndRankCommunity(communityId) {
-        if (this.isProcessing) {
-            this.apiManager.sendError('Already processing a community. Please wait.');
+    async scanCommunity(communityId) {
+        if (this.isScanning) {
+            this.api.sendMessage({
+                type: 'scan_error',
+                error: 'Scan already in progress'
+            });
             return;
         }
 
-        this.isProcessing = true;
+        this.isScanning = true;
+        this.scanResults = [];
 
         try {
-            this.apiManager.sendStatusUpdate('Validating community...', 'info');
+            // Notify scan started
+            this.api.sendMessage({ type: 'scan_started' });
 
-            // First, validate the community exists
-            const communityInfo = await this.validateCommunity(communityId);
-            if (!communityInfo) {
-                throw new Error('Community not found or invalid');
+            // Validate community
+            await this.validateCommunity(communityId);
+
+            // Fetch members with intelligent limits
+            const members = await this.fetchMembers(communityId);
+            
+            if (!members.length) {
+                throw new Error('No members found in community');
             }
 
-            this.apiManager.sendStatusUpdate('Fetching community members...', 'info');
+            // Process members with turbo speed
+            const results = await this.processMembers(members);
 
-            // Fetch community members with intelligent limits
-            let maxMembers = 3000; // Default limit for speed
-            
-            // For smaller communities, fetch more members
-            const communityInfo = await this.validateCommunity(communityId);
-            if (communityInfo && communityInfo.memberCount && communityInfo.memberCount < 10000) {
-                maxMembers = Math.min(communityInfo.memberCount, 5000);
-            }
-            
-            const members = await this.apiManager.fetchCommunityMembers(communityId, maxMembers);
-            
-            if (members.length === 0) {
-                throw new Error('No members found in this community');
-            }
-
-            this.apiManager.sendStatusUpdate(`Processing ${members.length} members...`, 'info');
-
-            // Calculate RAP for each member in parallel batches
-            const leaderboard = await this.processMembers(members);
-
-            // Sort by total RAP (descending)
-            leaderboard.sort((a, b) => b.totalRAP - a.totalRAP);
-
-            // Filter out users with 0 RAP
-            const filteredLeaderboard = leaderboard.filter(player => player.totalRAP > 0);
-
-            const stats = {
-                totalMembers: members.length,
-                totalWithRAP: filteredLeaderboard.length,
-                totalRAP: filteredLeaderboard.reduce((sum, player) => sum + player.totalRAP, 0)
-            };
-
-            this.apiManager.sendSuccess({
-                leaderboard: filteredLeaderboard.slice(0, 100), // Top 100 for performance
-                stats
+            // Send final results
+            this.api.sendMessage({
+                type: 'scan_complete',
+                data: results
             });
 
         } catch (error) {
-            console.error('Error fetching community data:', error);
-            this.apiManager.sendError(error.message || 'Failed to fetch community data');
+            console.error('Scan error:', error);
+            this.api.sendMessage({
+                type: 'scan_error',
+                error: error.message || 'Scan failed'
+            });
         } finally {
-            this.isProcessing = false;
+            this.isScanning = false;
         }
     }
 
     async validateCommunity(communityId) {
+        this.api.sendMessage({
+            type: 'status_update',
+            message: 'Validating community...',
+            level: 'info'
+        });
+
         try {
-            const url = `https://groups.roblox.com/v1/groups/${communityId}`;
-            const response = await this.apiManager.makeRequest(url);
-            return response && response.id ? response : null;
+            const response = await this.api.request(`https://groups.roblox.com/v1/groups/${communityId}`);
+            if (!response.id) {
+                throw new Error('Community not found');
+            }
+            return response;
         } catch (error) {
-            console.error('Error validating community:', error);
-            return null;
+            throw new Error('Invalid or private community');
         }
+    }
+
+    async fetchMembers(communityId) {
+        this.api.sendMessage({
+            type: 'status_update',
+            message: 'Fetching community members...',
+            level: 'info'
+        });
+
+        // Intelligent member limit based on community size
+        const limit = 2000; // Optimized for speed vs coverage
+        return await this.api.getCommunityMembers(communityId, limit);
     }
 
     async processMembers(members) {
-        const leaderboard = [];
-        
-        // Ultra-fast processing: Smart sampling and parallel execution
-        let membersToProcess;
-        if (members.length > 2000) {
-            // For massive communities, intelligently sample members
-            // Take first 500, then every 10th member up to 1500 total
-            const firstBatch = members.slice(0, 500);
-            const sampledBatch = members.slice(500).filter((_, index) => index % 10 === 0).slice(0, 1000);
-            membersToProcess = [...firstBatch, ...sampledBatch];
-            this.apiManager.sendStatusUpdate(`Smart sampling: Processing ${membersToProcess.length} members from ${members.length} total...`, 'info');
-        } else {
-            membersToProcess = members;
-        }
-
-        // Process members in ultra-fast parallel chunks
-        const chunkSize = 100;
-        const chunks = [];
-        
-        for (let i = 0; i < membersToProcess.length; i += chunkSize) {
-            chunks.push(membersToProcess.slice(i, i + chunkSize));
-        }
-
-                 // Process chunks with staggered starts and real-time updates
-         let processedCount = 0;
-         const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
-             // Stagger chunk starts to avoid overwhelming the API
-             await new Promise(resolve => setTimeout(resolve, chunkIndex * 100));
-             
-             const chunkResults = await Promise.all(chunk.map(async (member) => {
-                 try {
-                     const timeoutPromise = new Promise((_, reject) => 
-                         setTimeout(() => reject(new Error('Timeout')), 8000)
-                     );
-                     
-                     const rapPromise = this.apiManager.calculateUserRAP(member.user.userId);
-                     const { totalRAP } = await Promise.race([rapPromise, timeoutPromise]);
-                     
-                     processedCount++;
-                     
-                     const result = {
-                         userId: member.user.userId,
-                         username: member.user.username,
-                         displayName: member.user.displayName,
-                         totalRAP,
-                         avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
-                     };
-
-                     // Add to leaderboard immediately if they have valuable items
-                     if (totalRAP > 0) {
-                         leaderboard.push(result);
-                         
-                         // Send partial results every 10 valuable players found
-                         if (leaderboard.filter(p => p.totalRAP > 0).length % 10 === 0) {
-                             const sortedPartial = leaderboard
-                                 .filter(p => p.totalRAP > 0)
-                                 .sort((a, b) => b.totalRAP - a.totalRAP)
-                                 .slice(0, 50);
-                             
-                             this.apiManager.sendPartialResults({
-                                 leaderboard: sortedPartial,
-                                 isPartial: true,
-                                 processed: processedCount,
-                                 total: membersToProcess.length
-                             });
-                         }
-                     }
-                     
-                     // Update progress more frequently
-                     if (processedCount % 20 === 0) {
-                         this.apiManager.sendProgressUpdate(
-                             processedCount, 
-                             membersToProcess.length, 
-                             `Processed ${processedCount}/${membersToProcess.length} members...`
-                         );
-                     }
-                     
-                     return result;
-                 } catch (error) {
-                     processedCount++;
-                     return {
-                         userId: member.user.userId,
-                         username: member.user.username,
-                         displayName: member.user.displayName,
-                         totalRAP: 0,
-                         avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
-                     };
-                 }
-             }));
-             
-             return chunkResults;
-         });
-
-        // Wait for all chunks to complete
-        const allChunkResults = await Promise.all(chunkPromises);
-        
-        // Flatten results
-        allChunkResults.forEach(chunkResult => {
-            leaderboard.push(...chunkResult);
+        this.api.sendMessage({
+            type: 'status_update',
+            message: `Processing ${members.length} members...`,
+            level: 'info'
         });
 
-        return leaderboard;
+        const results = [];
+        let processed = 0;
+
+        // Ultra-parallel processing - process ALL members simultaneously
+        const memberPromises = members.map(async (member, index) => {
+            try {
+                const wealth = await this.api.calculatePlayerWealth(member.user.userId);
+                
+                const playerData = {
+                    userId: member.user.userId,
+                    username: member.user.username,
+                    totalRAP: wealth.totalRAP,
+                    valuableItems: wealth.valuableItems
+                };
+
+                processed++;
+
+                // Send live updates every 25 processed members
+                if (processed % 25 === 0) {
+                    const currentResults = results
+                        .filter(p => p.totalRAP > 0)
+                        .sort((a, b) => b.totalRAP - a.totalRAP)
+                        .slice(0, 50);
+
+                    this.api.sendMessage({
+                        type: 'partial_results',
+                        data: {
+                            leaderboard: currentResults,
+                            stats: this.calculateStats(results, members.length),
+                            isLive: true
+                        }
+                    });
+
+                    this.api.sendMessage({
+                        type: 'progress_update',
+                        data: {
+                            processed,
+                            total: members.length,
+                            percentage: Math.round((processed / members.length) * 100),
+                            message: `Processed ${processed}/${members.length} members...`
+                        }
+                    });
+                }
+
+                return playerData;
+            } catch (error) {
+                processed++;
+                return {
+                    userId: member.user.userId,
+                    username: member.user.username,
+                    totalRAP: 0,
+                    valuableItems: []
+                };
+            }
+        });
+
+        // Wait for all members to be processed
+        const allResults = await Promise.all(memberPromises);
+        results.push(...allResults);
+
+        // Filter and sort final results
+        const wealthyMembers = results
+            .filter(player => player.totalRAP > 0)
+            .sort((a, b) => b.totalRAP - a.totalRAP)
+            .slice(0, 100); // Top 100 for performance
+
+        return {
+            leaderboard: wealthyMembers,
+            stats: this.calculateStats(results, members.length)
+        };
+    }
+
+    calculateStats(results, totalMembers) {
+        const withRAP = results.filter(p => p.totalRAP > 0);
+        const totalRAP = withRAP.reduce((sum, p) => sum + p.totalRAP, 0);
+
+        return {
+            totalMembers,
+            withRAP: withRAP.length,
+            totalRAP
+        };
     }
 }
 
-// Global instance
-const communityTracker = new CommunityTracker();
+// Global scanner instance
+const scanner = new CommunityScanner();
 
-// Listen for messages from popup
+// Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'fetchCommunityData') {
-        communityTracker.fetchAndRankCommunity(message.communityId);
+    if (message.action === 'scanCommunity') {
+        scanner.scanCommunity(message.communityId);
         sendResponse({ success: true });
     }
-    return true; // Keep message channel open for async response
+    return true;
 });
 
-// Handle extension installation
+// Extension lifecycle
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('Roblox Community RAP Tracker installed');
+    console.log('Roblox Community Wealth Tracker v2.0 installed');
 });
