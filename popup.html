@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roblox Community RAP Tracker</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Roblox Community RAP Tracker</h1>
+        </div>
+        
+        <div class="input-section">
+            <label for="communityLink">Community Link:</label>
+            <input 
+                type="text" 
+                id="communityLink" 
+                placeholder="https://www.roblox.com/communities/35461612/Z9-Market#!/about"
+                class="community-input"
+            >
+            <div class="button-group">
+                <button id="searchBtn" class="btn btn-primary">Search for List</button>
+                <button id="refreshBtn" class="btn btn-secondary" disabled>Refresh</button>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <div id="statusMessage" class="status-message"></div>
+            <div id="progressBar" class="progress-bar" style="display: none;">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="leaderboard-header" style="display: none;">
+                <h2>💰 Wealth Leaderboard</h2>
+                <div class="stats">
+                    <span id="memberCount">0 members</span>
+                    <span id="totalRAP">Total RAP: 0</span>
+                </div>
+            </div>
+            
+            <div id="leaderboard" class="leaderboard"></div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
