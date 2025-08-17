@@ -166,6 +166,9 @@ class RobloxCommunityTracker {
             case 'success':
                 this.handleSearchSuccess(message.data);
                 break;
+            case 'partial_results':
+                this.handlePartialResults(message.data);
+                break;
             case 'error':
                 this.handleSearchError(message.error);
                 break;
@@ -189,6 +192,24 @@ class RobloxCommunityTracker {
         }
     }
 
+    handlePartialResults(data) {
+        const { leaderboard, isPartial, processed, total } = data;
+        
+        // Update leaderboard with partial results
+        this.displayLeaderboard(leaderboard);
+        
+        // Update stats for partial results
+        const stats = {
+            totalMembers: total,
+            totalWithRAP: leaderboard.length,
+            totalRAP: leaderboard.reduce((sum, player) => sum + player.totalRAP, 0)
+        };
+        this.updateStats(stats);
+        
+        // Show status indicating partial results
+        this.showStatus(`Live results: ${leaderboard.length} wealthy members found (${processed}/${total} processed)`, 'info');
+    }
+
     async handleSearchSuccess(data) {
         const { leaderboard, stats } = data;
         
@@ -202,7 +223,7 @@ class RobloxCommunityTracker {
             lastStats: stats
         });
 
-        this.showStatus(`Found ${stats.totalMembers} members with ${stats.totalWithRAP} having valuable items`, 'success');
+        this.showStatus(`✅ Complete! Found ${stats.totalMembers} members with ${stats.totalWithRAP} having valuable items`, 'success');
         this.resetSearchState();
         document.getElementById('refreshBtn').disabled = false;
     }

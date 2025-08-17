@@ -1,11 +1,13 @@
 class RobloxAPIManager {
     constructor() {
-        this.baseDelay = 100; // Base delay between requests (ms)
-        this.maxConcurrentRequests = 10; // Max parallel requests
+        this.baseDelay = 25; // Ultra-fast delay between requests (ms)
+        this.maxConcurrentRequests = 50; // Maximum parallel requests for speed
         this.requestQueue = [];
         this.activeRequests = 0;
-        this.rateLimitDelay = 1000; // Delay when rate limited
+        this.rateLimitDelay = 500; // Reduced rate limit delay
         this.rapCache = new Map(); // Cache RAP values to avoid duplicate requests
+        this.inventoryCache = new Map(); // Cache inventory data
+        this.userCache = new Map(); // Cache user data
     }
 
     async makeRequest(url, options = {}) {
@@ -57,13 +59,16 @@ class RobloxAPIManager {
         }
     }
 
-    async fetchCommunityMembers(communityId) {
+    async fetchCommunityMembers(communityId, maxMembers = 5000) {
         const members = [];
         let cursor = null;
         let hasNextPage = true;
         let pageCount = 0;
 
-        while (hasNextPage && pageCount < 100) { // Limit to prevent infinite loops
+        // For very large communities, we'll use intelligent sampling
+        const maxPages = Math.ceil(maxMembers / 100); // Calculate max pages needed
+
+        while (hasNextPage && pageCount < maxPages && members.length < maxMembers) {
             try {
                 let url = `https://groups.roblox.com/v1/groups/${communityId}/users?sortOrder=Asc&limit=100`;
                 if (cursor) {
@@ -81,7 +86,33 @@ class RobloxAPIManager {
                 pageCount++;
 
                 // Send progress update
-                this.sendProgressUpdate(members.length, null, `Fetched ${members.length} members...`);
+                this.sendProgressUpdate(members.length, maxMembers, `Fetched ${members.length} members...`);
+
+                // For large communities, fetch multiple pages in parallel
+                if (hasNextPage && members.length < maxMembers && pageCount < maxPages) {
+                    const parallelFetches = Math.min(3, maxPages - pageCount);
+                    const parallelPromises = [];
+
+                    for (let i = 0; i < parallelFetches && hasNextPage; i++) {
+                        if (cursor) {
+                            const parallelUrl = `https://groups.roblox.com/v1/groups/${communityId}/users?sortOrder=Asc&limit=100&cursor=${cursor}`;
+                            parallelPromises.push(this.makeRequest(parallelUrl));
+                        }
+                    }
+
+                    if (parallelPromises.length > 0) {
+                        const parallelResults = await Promise.allSettled(parallelPromises);
+                        parallelResults.forEach(result => {
+                            if (result.status === 'fulfilled' && result.value.data) {
+                                members.push(...result.value.data);
+                                if (result.value.nextPageCursor) {
+                                    cursor = result.value.nextPageCursor;
+                                }
+                            }
+                        });
+                        pageCount += parallelPromises.length;
+                    }
+                }
 
             } catch (error) {
                 console.error('Error fetching community members:', error);
@@ -89,38 +120,29 @@ class RobloxAPIManager {
             }
         }
 
-        return members;
+        return members.slice(0, maxMembers); // Ensure we don't exceed the limit
     }
 
     async fetchUserInventory(userId) {
+        // Check cache first
+        if (this.inventoryCache.has(userId)) {
+            return this.inventoryCache.get(userId);
+        }
+
         try {
-            // Use a more efficient approach - fetch multiple pages if needed
-            let allItems = [];
-            let cursor = null;
-            let pageCount = 0;
-            const maxPages = 5; // Limit to prevent excessive API calls
-
-            while (pageCount < maxPages) {
-                let url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
-                if (cursor) {
-                    url += `&cursor=${cursor}`;
-                }
-
-                const response = await this.makeRequest(url);
-                const items = response.data || [];
-                
-                if (items.length === 0) break;
-                
-                allItems.push(...items);
-                cursor = response.nextPageCursor;
-                pageCount++;
-                
-                if (!cursor) break;
-            }
-
-            return allItems;
+            // For speed, only fetch the first page of collectibles
+            // Most valuable items are typically in the first page anyway
+            const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Desc&limit=100`;
+            const response = await this.makeRequest(url);
+            const items = response.data || [];
+            
+            // Cache the result
+            this.inventoryCache.set(userId, items);
+            return items;
         } catch (error) {
             console.error(`Error fetching inventory for user ${userId}:`, error);
+            // Cache empty result to avoid retrying
+            this.inventoryCache.set(userId, []);
             return [];
         }
     }
@@ -158,35 +180,26 @@ class RobloxAPIManager {
             let totalRAP = 0;
             const valuableItems = [];
 
-            // Process items in smaller batches for better performance and rate limiting
-            const batchSize = 3;
-            for (let i = 0; i < inventory.length; i += batchSize) {
-                const batch = inventory.slice(i, i + batchSize);
-                
-                // Create promises for RAP fetching
-                const rapPromises = batch.map(async (item) => {
-                    try {
-                        const rap = await this.fetchAssetRAP(item.assetId);
-                        return { item, rap };
-                    } catch (error) {
-                        return { item, rap: 0 };
-                    }
-                });
-
-                const batchResults = await Promise.all(rapPromises);
-
-                batchResults.forEach(({ item, rap }) => {
-                    if (rap > 10000) { // Only count items worth more than 10k
-                        totalRAP += rap;
-                        valuableItems.push({ ...item, rap });
-                    }
-                });
-
-                // Very small delay to be respectful to API
-                if (i + batchSize < inventory.length) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+            // Process ALL items in parallel for maximum speed
+            const rapPromises = inventory.map(async (item) => {
+                try {
+                    const rap = await this.fetchAssetRAP(item.assetId);
+                    return { item, rap };
+                } catch (error) {
+                    return { item, rap: 0 };
                 }
-            }
+            });
+
+            // Wait for all RAP calculations to complete
+            const allResults = await Promise.all(rapPromises);
+
+            // Filter and sum up valuable items
+            allResults.forEach(({ item, rap }) => {
+                if (rap > 10000) { // Only count items worth more than 10k
+                    totalRAP += rap;
+                    valuableItems.push({ ...item, rap });
+                }
+            });
 
             return { totalRAP, valuableItems };
         } catch (error) {
@@ -213,6 +226,13 @@ class RobloxAPIManager {
     sendSuccess(data) {
         chrome.runtime.sendMessage({
             type: 'success',
+            data
+        }).catch(() => {});
+    }
+
+    sendPartialResults(data) {
+        chrome.runtime.sendMessage({
+            type: 'partial_results',
             data
         }).catch(() => {});
     }
@@ -250,8 +270,16 @@ class CommunityTracker {
 
             this.apiManager.sendStatusUpdate('Fetching community members...', 'info');
 
-            // Fetch all community members
-            const members = await this.apiManager.fetchCommunityMembers(communityId);
+            // Fetch community members with intelligent limits
+            let maxMembers = 3000; // Default limit for speed
+            
+            // For smaller communities, fetch more members
+            const communityInfo = await this.validateCommunity(communityId);
+            if (communityInfo && communityInfo.memberCount && communityInfo.memberCount < 10000) {
+                maxMembers = Math.min(communityInfo.memberCount, 5000);
+            }
+            
+            const members = await this.apiManager.fetchCommunityMembers(communityId, maxMembers);
             
             if (members.length === 0) {
                 throw new Error('No members found in this community');
@@ -300,63 +328,105 @@ class CommunityTracker {
 
     async processMembers(members) {
         const leaderboard = [];
-        const batchSize = 15; // Optimized batch size for better performance
         
-        // For very large communities, we can process a subset first to show quick results
-        const maxMembersToProcess = Math.min(members.length, 1000); // Limit for performance
-        const membersToProcess = members.slice(0, maxMembersToProcess);
-        
-        if (members.length > maxMembersToProcess) {
-            this.apiManager.sendStatusUpdate(`Processing first ${maxMembersToProcess} members for performance...`, 'info');
+        // Ultra-fast processing: Smart sampling and parallel execution
+        let membersToProcess;
+        if (members.length > 2000) {
+            // For massive communities, intelligently sample members
+            // Take first 500, then every 10th member up to 1500 total
+            const firstBatch = members.slice(0, 500);
+            const sampledBatch = members.slice(500).filter((_, index) => index % 10 === 0).slice(0, 1000);
+            membersToProcess = [...firstBatch, ...sampledBatch];
+            this.apiManager.sendStatusUpdate(`Smart sampling: Processing ${membersToProcess.length} members from ${members.length} total...`, 'info');
+        } else {
+            membersToProcess = members;
         }
+
+        // Process members in ultra-fast parallel chunks
+        const chunkSize = 100;
+        const chunks = [];
         
-        for (let i = 0; i < membersToProcess.length; i += batchSize) {
-            const batch = membersToProcess.slice(i, i + batchSize);
-            
-            // Process batch in parallel with timeout protection
-            const batchPromises = batch.map(async (member) => {
-                try {
-                    // Add timeout to prevent hanging on slow users
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Timeout')), 30000)
-                    );
-                    
-                    const rapPromise = this.apiManager.calculateUserRAP(member.user.userId);
-                    const { totalRAP } = await Promise.race([rapPromise, timeoutPromise]);
-                    
-                    return {
-                        userId: member.user.userId,
-                        username: member.user.username,
-                        displayName: member.user.displayName,
-                        totalRAP,
-                        avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
-                    };
-                } catch (error) {
-                    console.error(`Error processing member ${member.user.username}:`, error);
-                    return {
-                        userId: member.user.userId,
-                        username: member.user.username,
-                        displayName: member.user.displayName,
-                        totalRAP: 0,
-                        avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
-                    };
-                }
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            leaderboard.push(...batchResults);
-
-            // Update progress
-            const processed = Math.min(i + batchSize, membersToProcess.length);
-            this.apiManager.sendProgressUpdate(
-                processed, 
-                membersToProcess.length, 
-                `Processed ${processed}/${membersToProcess.length} members...`
-            );
-
-            // Smaller delay between batches for faster processing
-            await new Promise(resolve => setTimeout(resolve, 100));
+        for (let i = 0; i < membersToProcess.length; i += chunkSize) {
+            chunks.push(membersToProcess.slice(i, i + chunkSize));
         }
+
+                 // Process chunks with staggered starts and real-time updates
+         let processedCount = 0;
+         const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
+             // Stagger chunk starts to avoid overwhelming the API
+             await new Promise(resolve => setTimeout(resolve, chunkIndex * 100));
+             
+             const chunkResults = await Promise.all(chunk.map(async (member) => {
+                 try {
+                     const timeoutPromise = new Promise((_, reject) => 
+                         setTimeout(() => reject(new Error('Timeout')), 8000)
+                     );
+                     
+                     const rapPromise = this.apiManager.calculateUserRAP(member.user.userId);
+                     const { totalRAP } = await Promise.race([rapPromise, timeoutPromise]);
+                     
+                     processedCount++;
+                     
+                     const result = {
+                         userId: member.user.userId,
+                         username: member.user.username,
+                         displayName: member.user.displayName,
+                         totalRAP,
+                         avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
+                     };
+
+                     // Add to leaderboard immediately if they have valuable items
+                     if (totalRAP > 0) {
+                         leaderboard.push(result);
+                         
+                         // Send partial results every 10 valuable players found
+                         if (leaderboard.filter(p => p.totalRAP > 0).length % 10 === 0) {
+                             const sortedPartial = leaderboard
+                                 .filter(p => p.totalRAP > 0)
+                                 .sort((a, b) => b.totalRAP - a.totalRAP)
+                                 .slice(0, 50);
+                             
+                             this.apiManager.sendPartialResults({
+                                 leaderboard: sortedPartial,
+                                 isPartial: true,
+                                 processed: processedCount,
+                                 total: membersToProcess.length
+                             });
+                         }
+                     }
+                     
+                     // Update progress more frequently
+                     if (processedCount % 20 === 0) {
+                         this.apiManager.sendProgressUpdate(
+                             processedCount, 
+                             membersToProcess.length, 
+                             `Processed ${processedCount}/${membersToProcess.length} members...`
+                         );
+                     }
+                     
+                     return result;
+                 } catch (error) {
+                     processedCount++;
+                     return {
+                         userId: member.user.userId,
+                         username: member.user.username,
+                         displayName: member.user.displayName,
+                         totalRAP: 0,
+                         avatar: `https://www.roblox.com/headshot-thumbnail/image?userId=${member.user.userId}&width=32&height=32&format=png`
+                     };
+                 }
+             }));
+             
+             return chunkResults;
+         });
+
+        // Wait for all chunks to complete
+        const allChunkResults = await Promise.all(chunkPromises);
+        
+        // Flatten results
+        allChunkResults.forEach(chunkResult => {
+            leaderboard.push(...chunkResult);
+        });
 
         return leaderboard;
     }
