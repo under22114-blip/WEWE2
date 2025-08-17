@@ -309,11 +309,11 @@ class WealthTracker {
             <div class="rank-badge">${rank}</div>
             <div class="player-info">
                 <img 
-                    src="https://www.roblox.com/headshot-thumbnail/image?userId=${player.userId}&width=48&height=48&format=png" 
+                    src="https://www.roblox.com/headshot-thumbnail/image?userId=${player.userId}&width=32&height=32&format=png" 
                     alt="${player.username}"
                     class="avatar"
                     loading="lazy"
-                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIGZpbGw9IiM2NjYiIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz48L3N2Zz4='"
+                    onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IiM2NjYiIHZpZXdCb3g9IjAgMCAzMiAzMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiLz48L3N2Zz4='"
                 >
                 <div class="player-details">
                     <div class="username">@${player.username}</div>
