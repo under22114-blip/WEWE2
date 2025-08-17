@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Roblox Community RAP Tracker",
+  "version": "1.0",
+  "description": "Extract Roblox community members and rank them by RAP value from limited items",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.roblox.com/*",
+    "https://users.roblox.com/*",
+    "https://groups.roblox.com/*",
+    "https://economy.roblox.com/*",
+    "https://catalog.roblox.com/*",
+    "https://inventory.roblox.com/*",
+    "https://apis.roblox.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Roblox Community RAP Tracker",
+    "default_icon": {
+      "16": "icon.svg",
+      "32": "icon.svg",
+      "48": "icon.svg",
+      "128": "icon.svg"
+    }
+  },
+  "icons": {
+    "16": "icon.svg",
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
