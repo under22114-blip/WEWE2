@@ -1,80 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Wealth Tracker</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Wealth Scanner</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app">
-        <!-- Header -->
-        <header class="header">
-            <div class="title">
-                <span class="icon">💎</span>
-                <h1>Roblox Wealth Tracker</h1>
-            </div>
-            <div class="version">v2.0</div>
+    <div id="app">
+        <header>
+            <h1>⚡ Roblox Wealth Scanner</h1>
         </header>
-
-        <!-- Input Section -->
-        <section class="input-section">
-            <div class="input-group">
-                <label for="communityUrl">Community Link</label>
+        
+        <main>
+            <div class="input-box">
                 <input 
-                    type="url" 
-                    id="communityUrl" 
-                    placeholder="https://www.roblox.com/communities/35461612/..."
+                    id="url" 
+                    type="text" 
+                    placeholder="https://www.roblox.com/communities/12345/..."
                     autocomplete="off"
-                    spellcheck="false"
                 >
-                <div class="input-status" id="inputStatus"></div>
+                <button id="scan">SCAN</button>
             </div>
             
-            <div class="controls">
-                <button id="scanBtn" class="btn primary" disabled>
-                    <span class="btn-text">Scan Community</span>
-                    <span class="btn-icon">🔍</span>
-                </button>
-                <button id="refreshBtn" class="btn secondary" disabled>
-                    <span class="btn-text">Refresh</span>
-                    <span class="btn-icon">🔄</span>
-                </button>
-            </div>
-        </section>
-
-        <!-- Status Section -->
-        <section class="status-section">
-            <div id="statusDisplay" class="status-display"></div>
-            <div id="progressContainer" class="progress-container hidden">
-                <div class="progress-bar">
-                    <div id="progressFill" class="progress-fill"></div>
-                </div>
-                <div id="progressText" class="progress-text">0%</div>
-            </div>
-        </section>
-
-        <!-- Results Section -->
-        <section class="results-section">
-            <div id="statsBar" class="stats-bar hidden">
-                <div class="stat">
-                    <span class="stat-label">Members</span>
-                    <span id="memberCount" class="stat-value">0</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-label">With RAP</span>
-                    <span id="rapCount" class="stat-value">0</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-label">Total Value</span>
-                    <span id="totalValue" class="stat-value">R$ 0</span>
-                </div>
-            </div>
-
-            <div id="leaderboard" class="leaderboard"></div>
-        </section>
+            <div id="status"></div>
+            <div id="progress" class="hidden"></div>
+            
+            <div id="results"></div>
+        </main>
     </div>
-
-    <script src="main.js"></script>
+    
+    <script src="popup.js"></script>
 </body>
 </html>

@@ -1,37 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Roblox Community Wealth Tracker",
-  "version": "2.0",
-  "description": "Lightning-fast Roblox community member wealth tracking by RAP value",
-  "permissions": [
-    "storage",
-    "background"
-  ],
-  "host_permissions": [
-    "*://*.roblox.com/*",
-    "*://*.robloxlabs.com/*"
-  ],
+  "name": "Roblox Wealth Scanner",
+  "version": "3.0",
+  "description": "Lightning-fast Roblox community wealth scanning",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.roblox.com/*"],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Roblox Wealth Tracker",
-    "default_icon": {
-      "16": "icon.svg",
-      "32": "icon.svg",
-      "48": "icon.svg",
-      "128": "icon.svg"
-    }
-  },
-  "icons": {
-    "16": "icon.svg",
-    "32": "icon.svg", 
-    "48": "icon.svg",
-    "128": "icon.svg"
+    "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+  "icons": {
+    "128": "icon.svg"
   }
 }

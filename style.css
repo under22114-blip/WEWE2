@@ -1,0 +1,136 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    width: 380px;
+    height: 500px;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f0f0f;
+    color: #fff;
+    overflow: hidden;
+}
+
+#app { height: 100%; display: flex; flex-direction: column; }
+
+header {
+    padding: 12px;
+    background: linear-gradient(90deg, #1a1a1a, #2a2a2a);
+    border-bottom: 1px solid #333;
+}
+
+h1 {
+    font-size: 16px;
+    text-align: center;
+    color: #00ff88;
+}
+
+main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.input-box {
+    display: flex;
+    gap: 8px;
+}
+
+#url {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 12px;
+}
+
+#url:focus { outline: none; border-color: #00ff88; }
+
+#scan {
+    padding: 10px 16px;
+    background: #00ff88;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#scan:hover { background: #00dd77; }
+#scan:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+#status {
+    font-size: 12px;
+    text-align: center;
+    padding: 8px;
+    border-radius: 4px;
+    min-height: 32px;
+}
+
+.status-info { background: #001a33; color: #0088ff; }
+.status-success { background: #001a0d; color: #00ff88; }
+.status-error { background: #330011; color: #ff4444; }
+
+#progress {
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: #00ff88;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+#results {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.player {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    border-left: 3px solid #333;
+}
+
+.player.top1 { border-left-color: #ffd700; background: #2a2a00; }
+.player.top3 { border-left-color: #00ff88; background: #002a11; }
+
+.rank {
+    width: 24px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #888;
+}
+
+.avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin: 0 8px;
+    background: #333;
+}
+
+.name {
+    flex: 1;
+    font-size: 12px;
+    color: #fff;
+}
+
+.rap {
+    font-size: 12px;
+    font-weight: bold;
+    color: #00ff88;
+}
+
+.hidden { display: none !important; }
+
+#results::-webkit-scrollbar { width: 4px; }
+#results::-webkit-scrollbar-track { background: #1a1a1a; }
+#results::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
