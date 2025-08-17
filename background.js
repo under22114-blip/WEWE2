@@ -6,11 +6,11 @@
 class TurboAPIClient {
     constructor() {
         this.config = {
-            maxConcurrent: 100,        // Aggressive concurrency
-            requestDelay: 10,          // Minimal delay
-            rateLimitDelay: 300,       // Quick recovery from rate limits
-            timeout: 5000,             // Fast timeout
-            maxRetries: 2              // Limited retries for speed
+            maxConcurrent: 200,        // INSANE concurrency
+            requestDelay: 0,           // NO delay
+            rateLimitDelay: 100,       // Ultra-fast recovery
+            timeout: 3000,             // Even faster timeout
+            maxRetries: 1              // Single retry only
         };
         
         this.state = {
@@ -40,14 +40,22 @@ class TurboAPIClient {
     }
 
     async processQueue() {
-        if (this.state.activeRequests >= this.config.maxConcurrent || 
-            this.state.requestQueue.length === 0 || 
-            this.state.isRateLimited) {
+        // Process multiple requests at once for maximum throughput
+        const batchSize = Math.min(10, this.config.maxConcurrent - this.state.activeRequests);
+        
+        if (batchSize <= 0 || this.state.requestQueue.length === 0 || this.state.isRateLimited) {
             return;
         }
 
-        const request = this.state.requestQueue.shift();
-        this.state.activeRequests++;
+        // Process batch of requests
+        for (let i = 0; i < batchSize && this.state.requestQueue.length > 0; i++) {
+            const request = this.state.requestQueue.shift();
+            this.state.activeRequests++;
+            this.processRequest(request);
+        }
+    }
+
+    async processRequest(request) {
 
         try {
             const controller = new AbortController();
@@ -87,7 +95,8 @@ class TurboAPIClient {
             }
         } finally {
             this.state.activeRequests--;
-            setTimeout(() => this.processQueue(), this.config.requestDelay);
+            // Immediate processing - no delay
+            this.processQueue();
         }
     }
 
@@ -154,8 +163,8 @@ class TurboAPIClient {
         }
 
         try {
-            // Only fetch first page of collectibles, sorted by value (most valuable first)
-            const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?limit=50&sortOrder=Desc`;
+            // Only fetch TOP 20 most valuable items for speed
+            const url = `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?limit=20&sortOrder=Desc`;
             const response = await this.request(url);
             const items = response.data || [];
             
@@ -189,13 +198,24 @@ class TurboAPIClient {
         try {
             const inventory = await this.getUserInventory(userId);
             
+            // Quick exit for users with no collectibles
             if (!inventory.length) {
                 return { totalRAP: 0, valuableItems: [] };
             }
 
-            // Process all items in parallel for maximum speed
+            // Smart filtering: Only check RAP for items that might be valuable
+            // Skip obviously worthless items by checking if they're limited/unique
+            const potentiallyValuable = inventory.filter(item => 
+                item.serialNumber || item.instanceId || item.userAssetId
+            );
+
+            if (!potentiallyValuable.length) {
+                return { totalRAP: 0, valuableItems: [] };
+            }
+
+            // Process only potentially valuable items in parallel
             const rapResults = await Promise.all(
-                inventory.map(async (item) => {
+                potentiallyValuable.map(async (item) => {
                     try {
                         const rap = await this.getAssetRAP(item.assetId);
                         return { item, rap };
@@ -303,83 +323,123 @@ class CommunityScanner {
             level: 'info'
         });
 
-        // Intelligent member limit based on community size
-        const limit = 2000; // Optimized for speed vs coverage
+        // TURBO MODE: Reduced limit for lightning speed
+        const limit = 1000; // Ultra-fast processing
         return await this.api.getCommunityMembers(communityId, limit);
     }
 
     async processMembers(members) {
         this.api.sendMessage({
             type: 'status_update',
-            message: `Processing ${members.length} members...`,
+            message: `Turbo processing ${members.length} members...`,
             level: 'info'
         });
 
         const results = [];
         let processed = 0;
+        const liveResults = [];
 
-        // Ultra-parallel processing - process ALL members simultaneously
-        const memberPromises = members.map(async (member, index) => {
-            try {
-                const wealth = await this.api.calculatePlayerWealth(member.user.userId);
-                
-                const playerData = {
-                    userId: member.user.userId,
-                    username: member.user.username,
-                    totalRAP: wealth.totalRAP,
-                    valuableItems: wealth.valuableItems
-                };
+        // MEGA-PARALLEL: Process in super-fast chunks of 50
+        const chunkSize = 50;
+        const chunks = [];
+        
+        for (let i = 0; i < members.length; i += chunkSize) {
+            chunks.push(members.slice(i, i + chunkSize));
+        }
 
-                processed++;
+                 // Process chunks with staggered start (no delay between chunks)
+         const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
+             // Process entire chunk in parallel
+             const chunkResults = await Promise.all(chunk.map(async (member) => {
+                 try {
+                     // Quick pre-filter: Skip users with obvious non-premium indicators
+                     if (member.user.username && member.user.username.match(/^(guest|player|user)\d+$/i)) {
+                         processed++;
+                         return {
+                             userId: member.user.userId,
+                             username: member.user.username,
+                             totalRAP: 0,
+                             valuableItems: []
+                         };
+                     }
 
-                // Send live updates every 25 processed members
-                if (processed % 25 === 0) {
-                    const currentResults = results
-                        .filter(p => p.totalRAP > 0)
-                        .sort((a, b) => b.totalRAP - a.totalRAP)
-                        .slice(0, 50);
+                     const wealth = await this.api.calculatePlayerWealth(member.user.userId);
+                    
+                    const playerData = {
+                        userId: member.user.userId,
+                        username: member.user.username,
+                        totalRAP: wealth.totalRAP,
+                        valuableItems: wealth.valuableItems
+                    };
 
-                    this.api.sendMessage({
-                        type: 'partial_results',
-                        data: {
-                            leaderboard: currentResults,
-                            stats: this.calculateStats(results, members.length),
-                            isLive: true
+                    processed++;
+
+                    // Add wealthy players to live results immediately
+                    if (playerData.totalRAP > 0) {
+                        liveResults.push(playerData);
+                        
+                        // Send live updates every 10 wealthy players found
+                        if (liveResults.length % 10 === 0) {
+                            const sortedLive = liveResults
+                                .sort((a, b) => b.totalRAP - a.totalRAP)
+                                .slice(0, 50);
+
+                            this.api.sendMessage({
+                                type: 'partial_results',
+                                data: {
+                                    leaderboard: sortedLive,
+                                    stats: {
+                                        totalMembers: members.length,
+                                        withRAP: liveResults.length,
+                                        totalRAP: liveResults.reduce((sum, p) => sum + p.totalRAP, 0)
+                                    },
+                                    isLive: true
+                                }
+                            });
                         }
-                    });
+                    }
 
-                    this.api.sendMessage({
-                        type: 'progress_update',
-                        data: {
-                            processed,
-                            total: members.length,
-                            percentage: Math.round((processed / members.length) * 100),
-                            message: `Processed ${processed}/${members.length} members...`
-                        }
-                    });
+                    // Progress updates every 20 processed
+                    if (processed % 20 === 0) {
+                        this.api.sendMessage({
+                            type: 'progress_update',
+                            data: {
+                                processed,
+                                total: members.length,
+                                percentage: Math.round((processed / members.length) * 100),
+                                message: `⚡ ${processed}/${members.length} processed (${liveResults.length} wealthy)`
+                            }
+                        });
+                    }
+
+                    return playerData;
+                } catch (error) {
+                    processed++;
+                    return {
+                        userId: member.user.userId,
+                        username: member.user.username,
+                        totalRAP: 0,
+                        valuableItems: []
+                    };
                 }
-
-                return playerData;
-            } catch (error) {
-                processed++;
-                return {
-                    userId: member.user.userId,
-                    username: member.user.username,
-                    totalRAP: 0,
-                    valuableItems: []
-                };
-            }
+            }));
+            
+            return chunkResults;
         });
 
-        // Wait for all members to be processed
-        const allResults = await Promise.all(memberPromises);
-        results.push(...allResults);
+        // Wait for all chunks to complete
+        const allChunkResults = await Promise.all(chunkPromises);
+        
+        // Flatten results
+        allChunkResults.forEach(chunkResult => {
+            results.push(...chunkResult);
+        });
 
-        // Filter and sort final results
+        // Final sort and filter
         const wealthyMembers = results
             .filter(player => player.totalRAP > 0)
             .sort((a, b) => b.totalRAP - a.totalRAP)
-            .slice(0, 100); // Top 100 for performance
+            .slice(0, 100);
 
         return {
             leaderboard: wealthyMembers,
