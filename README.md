@@ -1,3 +1,27 @@
+## Roblox Exact Robux (Chrome Extension)
+
+Shows your exact Robux on roblox.com by replacing abbreviated values (e.g., 1M+) in the header with the full number (e.g., 1067530). It fetches your balance from Roblox's official API using your logged-in session cookies.
+
+### Install (Developer Mode)
+
+1. Download or clone this folder to your computer.
+2. Open Chrome and go to `chrome://extensions`.
+3. Toggle on Developer mode (top right).
+4. Click "Load unpacked" and select this folder.
+5. Visit `https://www.roblox.com/` while logged in. The header Robux display should become the exact number.
+
+### Files
+
+- `manifest.json`: Extension configuration (MV3).
+- `background.js`: Service worker that fetches your balance from `https://economy.roblox.com/v1/user/currency`.
+- `content.js`: Injected into roblox.com pages to replace header Robux text and keep it updated as the DOM changes.
+
+### Notes
+
+- The extension only alters header/navigation elements to avoid changing item prices or other numbers.
+- Balance is cached for ~30 seconds to minimize network usage.
+- If you're not logged in or the API is temporarily unavailable, the page will remain unchanged.
+
 # 🎮 Roblox Community RAP Tracker
 
 A Chrome extension that extracts Roblox community members and ranks them by their wealth based on limited items ownership.

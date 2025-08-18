@@ -1,3 +1,42 @@
+const ROBUX_ENDPOINT = "https://economy.roblox.com/v1/user/currency";
+
+async function fetchExactRobuxBalance() {
+  try {
+    const response = await fetch(ROBUX_ENDPOINT, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        "accept": "application/json, text/plain, */*",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data && typeof data.robux === "number") {
+      return data.robux;
+    }
+    throw new Error("Unexpected response shape");
+  } catch (error) {
+    throw error;
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message && message.type === "GET_ROBUX_BALANCE") {
+    fetchExactRobuxBalance()
+      .then((robux) => {
+        sendResponse({ ok: true, robux });
+      })
+      .catch((error) => {
+        sendResponse({ ok: false, error: String(error && error.message ? error.message : error) });
+      });
+    return true; // Keep the message channel open for async response
+  }
+});
+
 class RobloxAPIManager {
     constructor() {
         this.baseDelay = 100; // Base delay between requests (ms)
