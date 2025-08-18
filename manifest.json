@@ -1,5 +1,34 @@
 {
   "manifest_version": 3,
+  "name": "Roblox Exact Robux",
+  "description": "Replaces abbreviated Robux (e.g., 1M+) with the exact balance (e.g., 1067530) across roblox.com.",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "Roblox Exact Robux"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.roblox.com/*",
+    "https://economy.roblox.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.roblox.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+
+{
+  "manifest_version": 3,
   "name": "Roblox Community RAP Tracker",
   "version": "1.0",
   "description": "Extract Roblox community members and rank them by RAP value from limited items",
